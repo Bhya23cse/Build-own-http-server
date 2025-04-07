@@ -13,30 +13,50 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const server = net.createServer((socket) => {
-    socket.on("data", (data) => {
-        const request = data.toString();
-        const [requestLine, ...headersAndBody] = request.split("\r\n");
-        const [method, requestPath] = requestLine.split(" ");
+    let buffer = "";
 
-        // Extract headers
+    socket.on("data", (data) => {
+        buffer += data.toString();
+
+        const [headerPart, body] = buffer.split("\r\n\r\n");
+        const lines = headerPart.split("\r\n");
+        const [method, requestPath] = lines[0].split(" ");
+
         const headers = {};
-        for (const line of headersAndBody) {
-            if (line === "") break;
-            const [key, value] = line.split(": ");
+        for (let i = 1; i < lines.length; i++) {
+            const [key, value] = lines[i].split(": ");
             headers[key] = value;
         }
 
-        let response = "";
-
+        // GET /
         if (method === "GET" && requestPath === "/") {
-            response = "HTTP/1.1 200 OK\r\n\r\n";
-        } else if (method === "GET" && requestPath.startsWith("/echo/")) {
+            socket.write("HTTP/1.1 200 OK\r\n\r\n");
+            socket.end();
+            return;
+        }
+
+        // GET /echo/{str}
+        if (method === "GET" && requestPath.startsWith("/echo/")) {
             const text = requestPath.slice("/echo/".length);
-            response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`;
-        } else if (method === "GET" && requestPath === "/user-agent") {
+            socket.write(
+                `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`
+            );
+            socket.end();
+            return;
+        }
+
+        // GET /user-agent
+        if (method === "GET" && requestPath === "/user-agent") {
             const userAgent = headers["User-Agent"] || "";
-            response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(userAgent)}\r\n\r\n${userAgent}`;
-        } else if (method === "GET" && requestPath.startsWith("/files/")) {
+            socket.write(
+                `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(userAgent)}\r\n\r\n${userAgent}`
+            );
+            socket.end();
+            return;
+        }
+
+        // GET /files/{filename}
+        if (method === "GET" && requestPath.startsWith("/files/")) {
             const filename = requestPath.slice("/files/".length);
             const filePath = path.join(directory, filename);
 
@@ -52,11 +72,34 @@ const server = net.createServer((socket) => {
                 socket.end();
             });
             return;
-        } else {
-            response = "HTTP/1.1 404 Not Found\r\n\r\n";
         }
 
-        socket.write(response);
+        // POST /files/{filename}
+        if (method === "POST" && requestPath.startsWith("/files/")) {
+            const filename = requestPath.slice("/files/".length);
+            const filePath = path.join(directory, filename);
+            const contentLength = parseInt(headers["Content-Length"] || "0", 10);
+
+            const bodyBuffer = Buffer.from(body || "");
+            if (bodyBuffer.length >= contentLength) {
+                fs.writeFile(filePath, bodyBuffer.slice(0, contentLength), (err) => {
+                    if (err) {
+                        socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+                    } else {
+                        socket.write("HTTP/1.1 201 Created\r\n\r\n");
+                    }
+                    socket.end();
+                });
+            } else {
+                // If body not fully received, wait for more data (not required for this challenge)
+                socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+                socket.end();
+            }
+            return;
+        }
+
+        // Unknown endpoint
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         socket.end();
     });
 });
