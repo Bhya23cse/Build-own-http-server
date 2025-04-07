@@ -1,13 +1,21 @@
 const net = require("net");
 
-console.log("Logs from your program will appear here!");
-
 const server = net.createServer((socket) => {
     socket.on("data", (data) => {
-        // Log the incoming request (optional)
-        console.log("Received request:\n" + data.toString());
+        const request = data.toString();
+        console.log("Raw Request:\n" + request);
 
-        // Basic HTTP response with status 200 OK
+        // Extract the first line of the request (e.g., "GET /some/path HTTP/1.1")
+        const [requestLine] = request.split("\r\n");
+        
+        // Split the request line into method, path, and HTTP version
+        const [method, path, httpVersion] = requestLine.split(" ");
+
+        console.log(`Method: ${method}`);
+        console.log(`Path: ${path}`);
+        console.log(`HTTP Version: ${httpVersion}`);
+
+        // Response
         const response = 
             "HTTP/1.1 200 OK\r\n" +
             "Content-Type: text/plain\r\n" +
@@ -15,7 +23,6 @@ const server = net.createServer((socket) => {
             "\r\n" +
             "Hello, World!";
 
-        // Send the response
         socket.write(response);
         socket.end();
     });
