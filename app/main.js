@@ -28,7 +28,7 @@ const server = net.createServer((socket) => {
     });
 
     socket.on("close", () => {
-        console.log("Connection closed");
+        console.log("Connection has closed");
     });
 });
 
