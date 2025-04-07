@@ -38,9 +38,14 @@ const server = net.createServer((socket) => {
         // GET /echo/{str}
         if (method === "GET" && requestPath.startsWith("/echo/")) {
             const text = requestPath.slice("/echo/".length);
-            socket.write(
-                `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`
-            );
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
+
+            if ((headers["Accept-Encoding"] || "").includes("gzip")) {
+                response += "Content-Encoding: gzip\r\n";
+            }
+
+            response += `Content-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`;
+            socket.write(response);
             socket.end();
             return;
         }
@@ -91,7 +96,6 @@ const server = net.createServer((socket) => {
                     socket.end();
                 });
             } else {
-                // If body not fully received, wait for more data (not required for this challenge)
                 socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
                 socket.end();
             }
