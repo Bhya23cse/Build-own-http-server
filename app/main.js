@@ -1,11 +1,11 @@
 const net = require("net");
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
 
 const args = process.argv.slice(2);
 let directory = null;
 
-// Extract --directory flag value
 for (let i = 0; i < args.length; i++) {
     if (args[i] === "--directory" && i + 1 < args.length) {
         directory = args[i + 1];
@@ -35,18 +35,37 @@ const server = net.createServer((socket) => {
             return;
         }
 
-        // GET /echo/{str}
+        // GET /echo/{str} with gzip compression
         if (method === "GET" && requestPath.startsWith("/echo/")) {
             const text = requestPath.slice("/echo/".length);
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
 
             if ((headers["Accept-Encoding"] || "").includes("gzip")) {
-                response += "Content-Encoding: gzip\r\n";
-            }
+                const bufferText = Buffer.from(text, "utf-8");
+                zlib.gzip(bufferText, (err, compressed) => {
+                    if (err) {
+                        socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+                        socket.end();
+                        return;
+                    }
 
-            response += `Content-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`;
-            socket.write(response);
-            socket.end();
+                    const response = 
+                        "HTTP/1.1 200 OK\r\n" +
+                        "Content-Encoding: gzip\r\n" +
+                        "Content-Type: text/plain\r\n" +
+                        `Content-Length: ${compressed.length}\r\n\r\n`;
+
+                    socket.write(response);
+                    socket.write(compressed);
+                    socket.end();
+                });
+            } else {
+                const response = 
+                    "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: text/plain\r\n" +
+                    `Content-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`;
+                socket.write(response);
+                socket.end();
+            }
             return;
         }
 
@@ -102,12 +121,12 @@ const server = net.createServer((socket) => {
             return;
         }
 
-        // Unknown endpoint
+        // Unknown
         socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         socket.end();
     });
 });
 
 server.listen(4221, "localhost", () => {
-    console.log("Server running at http://localhost:4221");
+    console.log("Server is listening on http://localhost:4221");
 });
